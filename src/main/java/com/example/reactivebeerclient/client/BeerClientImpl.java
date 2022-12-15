@@ -62,6 +62,11 @@ public class BeerClientImpl implements BeerClient {
 
     @Override
     public Mono<BeerDto> getBeerByUPC(String upc) {
-        return null;
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path(WebClientProperties.BEER_BY_UPC_V1_PATH)
+                        .build(upc))
+                .retrieve()
+                .bodyToMono(BeerDto.class);
     }
 }
