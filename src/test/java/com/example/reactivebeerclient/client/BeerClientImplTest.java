@@ -8,12 +8,16 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class BeerClientImplTest {
 
@@ -124,7 +128,51 @@ class BeerClientImplTest {
     }
 
     @Test
-    void deleteBeer() {
+    void testDeleteBeerHandleException() {
+        Mono<ResponseEntity<Void>> responseEntityMono = beerClient.deleteBeer(UUID.randomUUID());
+        ResponseEntity<Void> response = responseEntityMono.onErrorResume(throwable -> {
+            if (throwable instanceof WebClientResponseException) {
+                WebClientResponseException exception = (WebClientResponseException) throwable;
+                return Mono.just(ResponseEntity.status(exception.getStatusCode()).build());
+            } else {
+                throw new RuntimeException(throwable);
+            }
+        }).block();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void functionalTestGetBeerById() throws InterruptedException {
+        AtomicReference<String> beerName = new AtomicReference<>();
+        CountDownLatch countDownLatch = new CountDownLatch(1);
+
+        beerClient.listBeers(null, null, null, null, null)
+                .map(beerPagedList -> beerPagedList.getContent().get(0).getId())
+                .map(beerId -> beerClient.getBeerById(beerId, false))
+                .flatMap(mono -> mono)
+                .subscribe(beerDto -> {
+                    System.out.println(beerDto.getBeerName());
+                    beerName.set(beerDto.getBeerName());
+                    assertThat(beerDto.getBeerName()).isEqualTo("Mango Bobs");
+                    countDownLatch.countDown();
+                });
+
+        countDownLatch.await();
+
+        assertThat(beerName.get()).isEqualTo("Mango Bobs");
+    }
+
+    @Test
+    void deleteBeerByIdNotFound() {
+        Mono<ResponseEntity<Void>> responseEntityMono = beerClient.deleteBeer(UUID.randomUUID());
+        assertThrows(WebClientResponseException.class, () -> {
+            ResponseEntity<Void> response = responseEntityMono.block();
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        });
+    }
+
+    @Test
+    void deleteBeerById() {
         Mono<BeerPagedList> beerPagedListMono = beerClient.listBeers(null, null, null, null, null);
         BeerPagedList pagedList = beerPagedListMono.block();
         BeerDto beerDto = pagedList.getContent().get(0);
