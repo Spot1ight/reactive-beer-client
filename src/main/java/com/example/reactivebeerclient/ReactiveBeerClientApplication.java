@@ -18,4 +18,5 @@ public class ReactiveBeerClientApplication {
 	Resource resource;
 
 
+
 }
